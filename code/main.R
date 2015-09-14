@@ -19,7 +19,7 @@ library(magrittr)
 library(dplyr)
 library(stargazer)
 
-# Data Setup-------------------------------------------------------------------
+# Data Setup--------------------------------------------------------------------
 db <- src_sqlite("data/stanford_cs_phd.db")
 
 company <- tbl(db, "Company") %>% collect()
@@ -31,9 +31,59 @@ degree <- tbl(db, "Degree") %>% collect()
 title <- tbl(db, "Title") %>% collect()
 school <- tbl(db, "School") %>% collect()
 
+# Data Pre-processing-----------------------------------------------------------
+
+education %<>%
+  mutate(StartYear = suppressWarnings(as.numeric(StartYear)),
+         EndYear = suppressWarnings(as.numeric(EndYear)))
+
+school %<>%
+  mutate(School = 
+           stri_replace_all_fixed(School, "\n", "") %>%
+           stri_trim_both())
+
+# Stanford_ID
+stanford_id <- school %>%
+  filter(stri_detect_fixed(School, "Stanford")) %$%
+  SchoolId
+
+# CS_ID
+cs_id <- major %>%
+  filter(stri_detect_regex(Major, "(Computer)|(Computing)|(Software)|(Information)|(Informatica)|(Informatics)")) %$%
+  MajorId
+
+# PhD_ID
+phd_id <- degree %>%
+  mutate(phd = 
+           stri_replace_all_regex(Degree, "[^a-zA-Z]", "") %>%
+           stri_trans_tolower()) %>%
+  filter(stri_detect_regex(phd, "(phd)|(doctorate)")) %$%
+  DegreeId
+
+# RESEARCH QUESTIONS------------------------------------------------------------
+
+# Q1: Get the list of Stanford CS PhD Graduates (GRADS)
+grads <- 
+  inner_join(person, education, by = c("PersonId" = "PersonID")) %>%
+  filter(SchoolId %in% stanford_id,
+         MajorId %in% cs_id,
+         DegreeId %in% phd_id) %>%
+  group_by(PersonId, Name, Surname) %>%
+  summarise(StartYear = min(StartYear, na.rm = TRUE),
+            EndYear = max(EndYear, na.rm = TRUE)) %>%
+  ungroup() %>%
+  na.omit()
+
+grads
+
+# Q2: Get the list of companies where GRADS are working
 
 
+
+
+#
 # THE CODE BELOW IS ADOPTED FROM PREVIOUS PROJECT
+#
 
 
 # library(survival)
@@ -54,21 +104,21 @@ school <- tbl(db, "School") %>% collect()
 # addParam <- genParamAdder("../../writeup/parameters.tex")
 
 
-df.company <- 
-  inner_join(experience, company, 
-             by = c("CompanyID" = "CompanyId")) %>%
-  group_by(CompanyName) %>%
-  summarise(n = length(unique(PersonID))) %>%
-  arrange(desc(n)) %>%
-  mutate(CompanyName = plyr::mapvalues(CompanyName, "McKinsey & Company", "McKinsey"))
-
-stargazer(df.company %>% filter(n > 9 & !CompanyName %in% c("Stanford University")),
-          title = "Employers of Stanford CS PhDs graduates",
-          summary = FALSE,
-          label = "tab:companies", 
-          column.labels = c("Company", "N"), 
-          out = "writeup/tables/companies.tex",
-          rownames = FALSE)
+# df.company <- 
+#   inner_join(experience, company, 
+#              by = c("CompanyID" = "CompanyId")) %>%
+#   group_by(CompanyName) %>%
+#   summarise(n = length(unique(PersonID))) %>%
+#   arrange(desc(n)) %>%
+#   mutate(CompanyName = plyr::mapvalues(CompanyName, "McKinsey & Company", "McKinsey"))
+# 
+# stargazer(df.company %>% filter(n > 9 & !CompanyName %in% c("Stanford University")),
+#           title = "Employers of Stanford CS PhDs graduates",
+#           summary = FALSE,
+#           label = "tab:companies", 
+#           column.labels = c("Company", "N"), 
+#           out = "writeup/tables/companies.tex",
+#           rownames = FALSE)
 # system("sed -i 's/cc/lr/g' ../../writeup/tables/companies.tex")
 
 # educational data
