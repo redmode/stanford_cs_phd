@@ -18,6 +18,7 @@ library(stringi)
 library(magrittr)
 library(dplyr)
 library(stargazer)
+library(ggplot2)
 
 # Data Setup--------------------------------------------------------------------
 db <- src_sqlite("data/stanford_cs_phd.db")
@@ -74,7 +75,17 @@ grads <-
   ungroup() %>%
   na.omit()
 
-grads
+df_1 <- grads %>%
+  group_by(EndYear) %>%
+  summarise(NumGrads = n())
+
+ggplot(data = df_1) +
+  geom_line(aes(x = EndYear, y = NumGrads)) +
+  ggtitle("Number of Stanford CS PhD Graduates by year") +
+  ylab("Number of graduates") + 
+  xlab("Year of graduation") +
+  theme_light()
+ggsave(filename = "output/Q1_number_of_graduates_by_year.png")
 
 # Q2: Get the list of companies where GRADS are working
 
