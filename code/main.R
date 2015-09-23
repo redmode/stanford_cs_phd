@@ -19,6 +19,7 @@ library(magrittr)
 library(dplyr)
 library(stargazer)
 library(ggplot2)
+library(ggvis)
 
 # Data Setup--------------------------------------------------------------------
 db <- src_sqlite("data/stanford_cs_phd.db")
@@ -79,13 +80,29 @@ df_1 <- grads %>%
   group_by(EndYear) %>%
   summarise(NumGrads = n())
 
-ggplot(data = df_1) +
-  geom_line(aes(x = EndYear, y = NumGrads)) +
+ggplot(data = df_1, aes(x = EndYear, y = NumGrads)) +
+  geom_line() +
+  geom_smooth(method = "loess") +
   ggtitle("Number of Stanford CS PhD Graduates by year") +
   ylab("Number of graduates") + 
   xlab("Year of graduation") +
   theme_light()
 ggsave(filename = "output/Q1_number_of_graduates_by_year.png")
+
+g_1 <- df_1 %>% 
+  ggvis(~EndYear, ~NumGrads) %>%
+  layer_points() %>%
+  layer_smooths(span = 0.7, se = TRUE) %>%
+  add_axis("x", format = "f", subdivide = 4, 
+           tick_size_minor = 3, 
+           tick_size_major = 5, 
+           title = "Year of graduation") %>%
+  add_axis("y", title = "Number of graduates") %>%
+  
+g_1
+# export_svg(g_1, file = "output/Q1_number_of_graduates_by_year.svg")
+  
+
 
 # Q2: Get the list of companies where GRADS are working
 
