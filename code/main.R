@@ -23,6 +23,7 @@ library(ggvis)
 
 # Data Setup--------------------------------------------------------------------
 db <- src_sqlite("data/stanford_cs_phd.db")
+db <- src_sqlite("data/stanford_cs_masters.db")
 
 company <- tbl(db, "Company") %>% collect()
 person <- tbl(db, "Person") %>% collect()
@@ -87,7 +88,7 @@ ggplot(data = df_1, aes(x = EndYear, y = NumGrads)) +
   ylab("Number of graduates") + 
   xlab("Year of graduation") +
   theme_light()
-ggsave(filename = "output/Q1_number_of_graduates_by_year.png")
+ggsave(filename = "output/Q1_number_of_graduates_by_year.png", width = 9, height = 6)
 
 g_1 <- df_1 %>% 
   ggvis(~EndYear, ~NumGrads) %>%
@@ -97,7 +98,7 @@ g_1 <- df_1 %>%
            tick_size_minor = 3, 
            tick_size_major = 5, 
            title = "Year of graduation") %>%
-  add_axis("y", title = "Number of graduates") %>%
+  add_axis("y", title = "Number of graduates")
   
 g_1
 # export_svg(g_1, file = "output/Q1_number_of_graduates_by_year.svg")
