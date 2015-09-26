@@ -17,13 +17,14 @@ set.seed(12345)
 library(stringi)
 library(magrittr)
 library(dplyr)
+library(tidyr)
 library(stargazer)
 library(ggplot2)
 library(ggvis)
 
 # Data Setup--------------------------------------------------------------------
 db <- src_sqlite("data/stanford_cs_phd.db")
-db <- src_sqlite("data/stanford_cs_masters.db")
+# db <- src_sqlite("data/stanford_cs_masters.db")
 
 company <- tbl(db, "Company") %>% collect()
 person <- tbl(db, "Person") %>% collect()
@@ -45,6 +46,10 @@ school %<>%
            stri_replace_all_fixed(School, "\n", "") %>%
            stri_trim_both())
 
+experience %<>%
+  mutate(StartYear = suppressWarnings(as.numeric(StartYear)),
+         EndYear = suppressWarnings(as.numeric(EndYear)))
+
 # Stanford_ID
 stanford_id <- school %>%
   filter(stri_detect_fixed(School, "Stanford")) %$%
@@ -63,21 +68,32 @@ phd_id <- degree %>%
   filter(stri_detect_regex(phd, "(phd)|(doctorate)")) %$%
   DegreeId
 
+# Founder_ID
+founder_id <- title %>%
+  filter(stri_detect_regex(Title, "(Founder)|(founder)|(Owner)|(owner)|(Partner)|(Creator)")) %$%
+  TitleId
+
+# Engineer ID
+engineer_id <- title %>%
+  filter(stri_detect_regex(Title, "(Engineer)|(Developer)|(Programmer)|(Software)")) %$%
+  TitleId
+
 # RESEARCH QUESTIONS------------------------------------------------------------
 
 # Q1: Get the list of Stanford CS PhD Graduates (GRADS)
-grads <- 
+GRADS <- 
   inner_join(person, education, by = c("PersonId" = "PersonID")) %>%
   filter(SchoolId %in% stanford_id,
          MajorId %in% cs_id,
-         DegreeId %in% phd_id) %>%
+         DegreeId %in% phd_id,
+         Ongoing == 0)
+
+df_1 <- GRADS %>%
   group_by(PersonId, Name, Surname) %>%
   summarise(StartYear = min(StartYear, na.rm = TRUE),
             EndYear = max(EndYear, na.rm = TRUE)) %>%
   ungroup() %>%
-  na.omit()
-
-df_1 <- grads %>%
+  na.omit() %>%
   group_by(EndYear) %>%
   summarise(NumGrads = n())
 
@@ -102,11 +118,87 @@ g_1 <- df_1 %>%
   
 g_1
 # export_svg(g_1, file = "output/Q1_number_of_graduates_by_year.svg")
-  
 
 
-# Q2: Get the list of companies where GRADS are working
+# Q2: Fraction of graduates over time having title "founder" or "co-founder" in work histories post grad
 
+founders <- GRADS %>%
+  select(PersonId, GraduationYear = EndYear) %>%
+  left_join(experience, by = c("PersonId" = "PersonID")) %>%
+  mutate(is_founder = TitleID %in% founder_id & StartYear >= GraduationYear,
+         is_engineer = TitleID %in% engineer_id & StartYear >= GraduationYear,
+         years_after_graduation = StartYear - GraduationYear) %>%
+  group_by(PersonId) %>%
+  do({
+    was_founder <- any(.$is_founder, na.rm = TRUE)
+    was_engineer <- any(.$is_engineer, na.rm = TRUE)
+    
+    if (was_founder) {
+      year_founder <- filter(., is_founder) %$% min(StartYear, na.rm = TRUE)
+    } else {
+      year_founder <- NA
+    }
+    
+    if (was_engineer) {
+      year_engineer <- filter(., is_engineer) %$% min(StartYear, na.rm = TRUE)
+    } else {
+      year_engineer <- NA
+    }
+    
+    data_frame(
+      graduation_year = first(.$GraduationYear),
+      was_founder = was_founder,
+      year_founder = year_founder,
+      was_engineer = was_engineer,
+      year_engineer = year_engineer)
+  }) %>%
+  ungroup()
+
+years <- range(founders$graduation_year, na.rm = TRUE)
+df_2 <- data_frame(year = years[1]:years[2]) %>%
+  rowwise() %>%
+  do({
+    .year <- .$year
+    founders %>%
+      filter(graduation_year <= .year) %>%
+      mutate(year = .year) %>%
+      group_by(year) %>%
+      do({
+        to_year <- .
+        total_graduates <- nrow(to_year)
+        
+        total_founders <- to_year %>%
+          filter(was_founder, year_founder <= .year) %>%
+          nrow()
+        
+        total_engineers <- to_year %>%
+          filter(was_engineer, year_engineer <= .year) %>%
+          nrow()
+        
+        data_frame(total_graduates = total_graduates,
+                   total_founders = total_founders,
+                   total_engineers = total_engineers)
+      })
+  }) %>%
+  ungroup() %>%
+  mutate(fraction_founders = total_founders / total_graduates,
+         fraction_engineers = total_engineers / total_graduates)
+
+df_2 %<>%
+  select(year, starts_with("fraction_")) %>%
+  gather(key, value, -year) %>%
+  separate(key, c("exclude", "type")) %>%
+  select(-exclude)
+
+ggplot(data = df_2, aes(x = year, y = value)) +
+  geom_line(aes(colour = type), size = 1) +
+  ggtitle("Fraction of founders & engineeres") +
+  ylab("Fraction, % of total graduation pool") +
+  xlab("Year") +
+  theme_light() +
+  theme(legend.title = element_blank(),
+        legend.key = element_blank())
+ggsave(filename = "output/Q2_fraction_of_founders_engineers_by_year.png", width = 9, height = 6)
 
 
 
