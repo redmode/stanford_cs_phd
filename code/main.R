@@ -127,11 +127,13 @@ founders <- GRADS %>%
   left_join(experience, by = c("PersonId" = "PersonID")) %>%
   mutate(is_founder = TitleID %in% founder_id & StartYear >= GraduationYear,
          is_engineer = TitleID %in% engineer_id & StartYear >= GraduationYear,
+         is_both = is_founder | is_engineer,
          years_after_graduation = StartYear - GraduationYear) %>%
   group_by(PersonId) %>%
   do({
     was_founder <- any(.$is_founder, na.rm = TRUE)
     was_engineer <- any(.$is_engineer, na.rm = TRUE)
+    was_both <- any(.$is_both, na.rm = TRUE)
     
     if (was_founder) {
       year_founder <- filter(., is_founder) %$% min(StartYear, na.rm = TRUE)
@@ -145,12 +147,20 @@ founders <- GRADS %>%
       year_engineer <- NA
     }
     
+    if (was_both) {
+      year_both <- filter(., is_both) %$% min(StartYear, na.rm = TRUE)
+    } else {
+      year_both <- NA
+    }
+    
     data_frame(
       graduation_year = first(.$GraduationYear),
       was_founder = was_founder,
       year_founder = year_founder,
       was_engineer = was_engineer,
-      year_engineer = year_engineer)
+      year_engineer = year_engineer,
+      was_both = was_both,
+      year_both = year_both)
   }) %>%
   ungroup()
 
@@ -175,14 +185,20 @@ df_2 <- data_frame(year = years[1]:years[2]) %>%
           filter(was_engineer, year_engineer <= .year) %>%
           nrow()
         
+        total_both <- to_year %>%
+          filter(was_both, year_both <= .year) %>%
+          nrow()
+        
         data_frame(total_graduates = total_graduates,
                    total_founders = total_founders,
-                   total_engineers = total_engineers)
+                   total_engineers = total_engineers,
+                   total_both = total_both)
       })
   }) %>%
   ungroup() %>%
   mutate(fraction_founders = total_founders / total_graduates,
-         fraction_engineers = total_engineers / total_graduates)
+         fraction_engineers = total_engineers / total_graduates,
+         fraction_both = total_both / total_graduates)
 
 df_2 %<>%
   select(year, starts_with("fraction_")) %>%
